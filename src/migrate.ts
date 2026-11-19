@@ -1,6 +1,6 @@
-import { AppConfig } from "#src/shared/config/app.config.ts";
-import { DatabaseLive } from "#src/shared/database/database.layer.ts";
-import { Database } from "#src/shared/database/database.service.ts";
+import { AppConfig } from "#src/_shared/config/app.config.ts";
+import { DatabaseLive } from "#src/_shared/database/database.layer.ts";
+import { Database } from "#src/_shared/database/database.service.ts";
 import { NodeRuntime } from "@effect/platform-node";
 import { migrate } from "drizzle-orm/effect-postgres/migrator";
 import { Effect, Layer } from "effect";

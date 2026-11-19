@@ -1,7 +1,7 @@
+import { Database } from "#src/_shared/database/database.service.ts";
 import { PostRepository } from "#src/posts/application/ports/post.repository.ts";
 import { Post, PostId, type PostInput, type PostPatch } from "#src/posts/domain/post.entity.ts";
 import { postsTable, type PostRow } from "#src/posts/infrastructure/posts.table.ts";
-import { Database } from "#src/shared/database/database.service.ts";
 import { eq } from "drizzle-orm";
 import { DateTime, Effect, Layer, Option } from "effect";
 
