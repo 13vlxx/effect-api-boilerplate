@@ -1,24 +1,23 @@
-import { type Redacted, Schema } from "effect";
+import { UserId } from "#src/auth/domain/auth.entity.ts";
+import { Schema } from "effect";
 
-export const UserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand("UserId"));
-export type UserId = typeof UserId.Type;
+export const UserBio = Schema.String.check(Schema.isTrimmed(), Schema.isMaxLength(280));
 
-export const Username = Schema.String.check(
-  Schema.isMinLength(3),
-  Schema.isMaxLength(30),
-  Schema.isPattern(/^[a-z0-9_]+$/, { message: "Only lowercase letters, digits and underscores" }),
-).pipe(Schema.brand("Username"));
-export type Username = typeof Username.Type;
+// Les `customData` de Logto, typées ici : ajouter un champ ne demande que de toucher ce schéma.
+const customDataFields = { bio: Schema.optional(UserBio) };
 
-export const Password = Schema.String.check(Schema.isMinLength(12), Schema.isMaxLength(128));
+export const UserCustomData = Schema.Struct(customDataFields);
+export type UserCustomData = typeof UserCustomData.Type;
+
+// Logto fusionne le patch avec l'existant : même forme, tous les champs sont optionnels.
+export const UserCustomDataPatch = Schema.Struct(customDataFields);
+export type UserCustomDataPatch = typeof UserCustomDataPatch.Type;
 
 export class User extends Schema.Class<User>("User")({
   id: UserId,
-  username: Username,
+  username: Schema.NullOr(Schema.String),
+  name: Schema.NullOr(Schema.String),
+  avatar: Schema.NullOr(Schema.String),
+  customData: UserCustomData,
   createdAt: Schema.DateTimeUtc,
 }) {}
-
-export interface UserCredentials {
-  readonly user: User;
-  readonly passwordHash: Redacted.Redacted;
-}

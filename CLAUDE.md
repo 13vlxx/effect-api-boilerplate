@@ -18,7 +18,7 @@ docker compose up -d --wait           # Postgres local (user/pass/db = app)
 ```
 
 Avant de considérer une tâche finie : `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test` doivent passer.
-Configuration : `.env` (voir `.env.example`) → `PORT` (défaut 3000) et `DATABASE_URL`.
+Configuration : `.env` (voir `.env.example`) → `PORT` (défaut 3000), `DATABASE_URL`, et Logto : `LOGTO_ENDPOINT`, `API_AUDIENCE`, `LOGTO_M2M_CLIENT_ID`, `LOGTO_M2M_CLIENT_SECRET`. `docker compose up -d --wait` lance aussi Logto (OIDC sur :3001, console d'admin sur :3002).
 
 ## Structure
 
@@ -39,12 +39,13 @@ src/
     infrastructure/             # adapters : tout ce qui touche au monde extérieur
       database/                 # implémentation Drizzle des ports (+ table Drizzle)
       http/                     # <module>.api.ts (contrat) et <module>.handlers.ts (branchement)
-      security/                 # ex. hacheur Argon2
+      security/                 # ex. vérificateur de JWT (jose)
+      logto/                    # client de la Management API Logto
     <module>.layer.ts           # composition du module : handlers + adapters
     <module>.test.ts            # tests des use cases avec adapters en mémoire
 ```
 
-Modules actuels : `posts` (CRUD, écriture réservée à l'auteur), `users` (utilisateurs, dépôt), `auth` (inscription, HTTP Basic, middleware `Authentication`, `CurrentUser`).
+Modules actuels : `posts` (CRUD, écriture réservée à l'auteur), `users` (profil et `customData` lus/modifiés chez Logto via sa Management API, aucune table locale), `auth` (identité `UserId`/`AuthUser`, vérification du JWT Bearer émis par Logto, middleware `Authentication`, `CurrentUser`). L'inscription, le login et les mots de passe sont gérés par Logto, pas par l'API.
 
 ## Règle de dépendance (hexagonale)
 
@@ -55,9 +56,9 @@ infrastructure  →  application  →  domain
 ```
 
 - `domain/` n'importe **rien** d'Effect-technique ni de Drizzle, ni d'`infrastructure/`/`application/`. Seulement `effect` (Schema) et le domain d'autres modules si une entité en référence une autre (ex. `Post.authorId: UserId`).
-- `application/` (use cases + ports) importe le domain et les ports. **Jamais** Drizzle, HTTP, `@node-rs/argon2`, ni `infrastructure/`.
-- `infrastructure/` implémente les ports et expose l'HTTP. C'est le seul endroit qui connaît Drizzle, HTTP, Argon2.
-- Un module ne dépend d'un autre qu'à travers son **domain** ou ses **ports** (ex. `auth` utilise le port `UserRepository` de `users`). Pas d'import des tables ou adapters d'un autre module, sauf pour la composition (`*.layer.ts`, `_shared/database/schema.ts`).
+- `application/` (use cases + ports) importe le domain et les ports. **Jamais** Drizzle, HTTP, `jose`, ni `infrastructure/`.
+- `infrastructure/` implémente les ports et expose l'HTTP. C'est le seul endroit qui connaît Drizzle, HTTP, jose, Logto.
+- Un module ne dépend d'un autre qu'à travers son **domain** ou ses **ports** (ex. `users` et `posts` utilisent `UserId` et `CurrentUser` de `auth` ; `auth` ne dépend d'aucun autre module). Pas d'import des tables ou adapters d'un autre module, sauf pour la composition (`*.layer.ts`, `_shared/database/schema.ts`).
 - Pas de cycles d'import (`import/no-cycle` est activé dans le lint).
 
 Changer d'ORM ou de BDD = ne réécrire que `infrastructure/database/` et le layer. Si tu dois toucher `domain/` ou `application/` pour ça, la frontière est mal placée.
@@ -99,7 +100,7 @@ export class PostNotFoundError extends Schema.TaggedError<PostNotFoundError>()(
 ) {}
 ```
 
-Convention : suffixe `Error`, tag identique au nom de classe. Statuts utilisés : 401 `UnauthorizedError`, 403 `PostForbiddenError`, 404 `PostNotFoundError`, 409 `UsernameTakenError`.
+Convention : suffixe `Error`, tag identique au nom de classe. Statuts utilisés : 401 `UnauthorizedError`, 403 `PostForbiddenError`, 404 `PostNotFoundError`/`UserNotFoundError`.
 
 ## Application : ports et use cases
 
@@ -117,7 +118,7 @@ export class PostRepository extends Context.Service<PostRepository, {
 
 Règles des ports :
 - Retourner `Option` quand l'absence est normale (`findById`), `boolean` pour `delete`. **Le port ne produit pas d'erreur « not found »** : c'est le use case qui décide.
-- Le canal d'erreur du port ne contient que des **erreurs métier récupérables** (ex. `UsernameTakenError` pour `UserRepository.create`). Les pannes techniques ne remontent pas (voir Infrastructure).
+- Le canal d'erreur du port ne contient que des **erreurs métier récupérables** (ex. une erreur de doublon sur un `create`). Les pannes techniques ne remontent pas (voir Infrastructure).
 - Une entrée enrichie par le serveur a son propre type (`NewPost extends PostInput { authorId }`) : l'auteur ne vient jamais du corps de la requête.
 
 **Use case** = une fonction par fichier `application/use-cases/<verbe>-<nom>.use-case.ts`, qui récupère ses ports par `yield*` :
@@ -148,9 +149,9 @@ export const getPost = Effect.fn("getPost")(function* (id: PostId) {
 
   ```ts
   Effect.catchTag("EffectDrizzleQueryError", (e) =>
-    isUniqueViolation(e, USERS_USERNAME_UNIQUE) ? Effect.fail(new UsernameTakenError({...})) : Effect.die(e))
+    isUniqueViolation(e, POSTS_TITLE_UNIQUE) ? Effect.fail(new PostTitleTakenError({...})) : Effect.die(e))
   ```
-  Les contraintes ont un nom explicite exporté en constante (`USERS_USERNAME_UNIQUE`) ; l'helper est `_shared/database/sql.errors.ts`.
+  Les contraintes ont un nom explicite exporté en constante (`POSTS_TITLE_UNIQUE`) ; l'helper est `_shared/database/sql.errors.ts`.
 - Mise à jour : toujours renseigner `updatedAt: new Date()`.
 
 ### HTTP (contrat + handlers)
@@ -170,8 +171,8 @@ export class PostsApi extends HttpApiGroup.make("posts")
 ```
 
 - Chaque endpoint a un `OpenApi.Summary` (titre lisible dans la doc Scalar : « Create Post », « Delete Post »…).
-- `error: [...]` liste les erreurs du domain que l'endpoint peut renvoyer ; `success: HttpApiSchema.NoContent` pour un 204 ; `Schema.Redacted(Password)` pour un mot de passe en entrée.
-- **Ordre = sécurité** : écrire d'abord les endpoints protégés, puis `.middleware(Authentication)`, puis les publics. Vérifier avec `curl` qu'un appel sans identifiants renvoie bien 401.
+- `error: [...]` liste les erreurs du domain que l'endpoint peut renvoyer ; `success: HttpApiSchema.NoContent` pour un 204 .
+- **Ordre = sécurité** : écrire d'abord les endpoints protégés, puis `.middleware(Authentication)`, puis les publics. Vérifier avec `curl` qu'un appel sans token Bearer renvoie bien 401.
 - Le groupe est ajouté à la racine dans `_shared/http/api.ts` (`.add(AuthApi).add(PostsApi)`).
 
 `<module>.handlers.ts` branche le contrat sur les use cases et **ne contient aucune logique métier** :
@@ -196,16 +197,17 @@ Pourquoi `Effect.context` + `provideContext` : les handlers HttpApi ne peuvent p
 
 ### Authentification
 
-- Schéma : HTTP Basic. `Authentication` (`HttpApiMiddleware.Service` avec `security: { basic: HttpApiSecurity.basic }`) fournit `CurrentUser` aux handlers.
-- `AuthenticationLive` (`authentication.handler.ts`) capture `UserRepository | PasswordHasher`, appelle le use case `authenticateUser(username, password)`, puis `Effect.provideService(httpEffect, CurrentUser, user)`.
-- Mots de passe : Argon2id via le port `PasswordHasher` (adapter `Argon2PasswordHasherLive`). `verify` prend un `Option` de hash et vérifie toujours contre un hash factice si l'utilisateur est inconnu (pas de fuite par timing).
+- Schéma : **Bearer JWT** émis par Logto (self-host). L'API est un *resource server* : elle ne gère ni inscription, ni login, ni mots de passe. `Authentication` (`HttpApiMiddleware.Service` avec `security: { bearer: HttpApiSecurity.bearer }`) fournit `CurrentUser` (un `AuthUser`, juste `id`) aux handlers.
+- `UserId` (domain d'`auth`) est le `sub` du token : une chaîne opaque, **pas un UUID**. Aucune table `users` locale ; `posts.author_id` est un `text` sans clé étrangère.
+- `AuthenticationLive` (`authentication.handler.ts`) appelle le port `TokenVerifier` puis `Effect.provideService(httpEffect, CurrentUser, user)`. L'adapter `JoseTokenVerifierLive` vérifie signature (JWKS de Logto), `iss` (`$LOGTO_ENDPOINT/oidc`) et `aud` (`API_AUDIENCE`). Token invalide → 401 ; Logto injoignable → défaut (500).
+- Profil : le port `UserDirectory` (module `users`) est implémenté par `LogtoUserDirectoryLive`, qui appelle la Management API avec un token M2M mis en cache. Les `customData` sont typées par `UserCustomData` dans `users/domain/user.entity.ts` : pour ajouter un champ, ne toucher que ce schéma. Les routes `/users/me` n'ont pas d'`:id` : chacun ne voit et ne modifie que son profil.
 - Pour protéger une nouvelle route : ajouter l'endpoint avant `.middleware(Authentication)` et lire `yield* CurrentUser` dans le handler. Passer `user.id` au use case.
 
 ### Layers (composition)
 
-- `<module>.layer.ts` : `export const XLive = XHandlersLive.pipe(Layer.provide(DrizzleXRepositoryLive))` (handlers + adapters du module). Si un autre module a besoin de ton port, expose-le séparément (`UsersLive = DrizzleUserRepositoryLive`).
-- `auth.layer.ts` exporte `AuthLive` (routes) et `AuthMiddlewareLive` (middleware partagé par **tous** les modules protégés).
-- `app.layer.ts` assemble : `HttpApiBuilder.layer(Api)` ← `Layer.provide([AuthLive, PostsLive, ...])` ← `Layer.provide([AuthMiddlewareLive, layerProblemDetails])`, puis serveur HTTP, `DatabaseLive`, `AppConfig.layer`.
+- `<module>.layer.ts` : `export const XLive = XHandlersLive.pipe(Layer.provide(DrizzleXRepositoryLive))` (handlers + adapters du module). Si un autre module a besoin de ton port, expose-le séparément (ex. `UsersLive` fournit les handlers `/users` avec `LogtoUserDirectoryLive` et `FetchHttpClient.layer`).
+- `auth.layer.ts` exporte seulement `AuthMiddlewareLive` (middleware partagé par **tous** les modules protégés) ; `auth` n'a pas de routes.
+- `app.layer.ts` assemble : `HttpApiBuilder.layer(Api)` ← `Layer.provide([PostsLive, UsersLive, ...])` ← `Layer.provide([AuthMiddlewareLive, layerProblemDetails])`, puis serveur HTTP, `DatabaseLive`, `AppConfig.layer`.
 - `Layer.provide` : `A.pipe(Layer.provide(B))` fournit B **à** A ; B se place donc « en dessous ». Ce que A requiert et que B ne fournit pas reste dans le type de sortie. Un `R` non vide dans `AppLayer` = un layer oublié ; le typecheck le signale.
 
 ## Ajouter une feature (checklist)
@@ -219,12 +221,12 @@ Exemple : un module `comments` rattaché aux posts.
 5. **Table + adapter** : `infrastructure/comments.table.ts`, réexport dans `_shared/database/schema.ts`, `drizzle-comment.repository.ts`, puis `pnpm db:generate --name add_comments` et `pnpm db:migrate`. Relire le SQL généré avant de l'appliquer (colonne `NOT NULL` sans défaut sur une table non vide = migration qui échoue).
 6. **HTTP** : `comments.api.ts` (contrat, `OpenApi.Summary`, erreurs, middleware) + `comments.handlers.ts` ; ajouter le groupe dans `_shared/http/api.ts`.
 7. **Layer** : `comments.layer.ts`, puis ajout dans `Layer.provide([...])` de `app.layer.ts`.
-8. **Vérifier** : `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test`, puis lancer `pnpm dev` et rejouer les cas en `curl` : succès, 400 (validation), 401 (sans identifiants), 403 (mauvais utilisateur), 404, 409 si applicable.
+8. **Vérifier** : `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test`, puis lancer `pnpm dev` et rejouer les cas en `curl` : succès, 400 (validation), 401 (sans token Bearer), 403 (mauvais utilisateur), 404, 409 si applicable.
 
 ## À ne pas faire
 
 - Logique métier dans un handler HTTP ou dans un adapter Drizzle.
-- Importer Drizzle, `node:*`, `@node-rs/argon2` ou HTTP depuis `domain/` ou `application/`.
+- Importer Drizzle, `node:*`, `jose` ou HTTP depuis `domain/` ou `application/`.
 - Lire `authorId` (ou tout champ d'identité) dans le corps de la requête ; il vient de `CurrentUser`.
 - Renvoyer une erreur SQL brute au client ; utiliser `Effect.orDie` ou la traduire en erreur du domain.
 - Ajouter un endpoint public après `.middleware(Authentication)` en croyant qu'il est protégé (et inversement).
@@ -234,4 +236,4 @@ Exemple : un module `comments` rattaché aux posts.
 
 ## Production
 
-`Dockerfile` à la racine (Node 24, dépendances de prod, migrations puis démarrage, healthcheck sur `/api/docs/openapi.json`). Avant la mise en prod : passer `includeDetails` à `false` dans `layerProblemDetails` (`app.layer.ts`), protéger ou retirer `/api/docs`, et placer l'API derrière un reverse proxy HTTPS (HTTP Basic envoie les identifiants en clair).
+`Dockerfile` à la racine (Node 24, dépendances de prod, migrations puis démarrage, healthcheck sur `/api/docs/openapi.json`). Avant la mise en prod : passer `includeDetails` à `false` dans `layerProblemDetails` (`app.layer.ts`), protéger ou retirer `/api/docs`, et placer l'API derrière un reverse proxy HTTPS (le Bearer token circule en clair sinon), et passer `LOGTO_ENDPOINT` en HTTPS.

@@ -1,5 +1,5 @@
 import type { Post, PostId, PostInput, PostPatch } from "#src/posts/domain/post.entity.ts";
-import type { UserId } from "#src/users/domain/user.entity.ts";
+import type { UserId } from "#src/auth/domain/auth.entity.ts";
 import { Context, type Effect, type Option } from "effect";
 
 // Ce que le dépôt enregistre : les champs saisis, plus l'auteur, qui ne vient jamais du client.

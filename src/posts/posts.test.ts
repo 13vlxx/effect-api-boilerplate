@@ -3,7 +3,7 @@ import { createPost } from "#src/posts/application/use-cases/create-post.use-cas
 import { deletePost } from "#src/posts/application/use-cases/delete-post.use-case.ts";
 import { getPost } from "#src/posts/application/use-cases/get-post.use-case.ts";
 import { Post, PostId } from "#src/posts/domain/post.entity.ts";
-import { UserId } from "#src/users/domain/user.entity.ts";
+import { UserId } from "#src/auth/domain/auth.entity.ts";
 import { DateTime, Effect, Layer, Option } from "effect";
 import { describe, expect, it } from "@effect/vitest";
 

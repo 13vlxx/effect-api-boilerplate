@@ -1,7 +1,8 @@
+import { UserId } from "#src/auth/domain/auth.entity.ts";
 import { Schema } from "effect";
 
-export class UsernameTakenError extends Schema.TaggedError<UsernameTakenError>()(
-  "UsernameTakenError",
-  { message: Schema.String },
-  { httpApiStatus: 409 },
+export class UserNotFoundError extends Schema.TaggedError<UserNotFoundError>()(
+  "UserNotFoundError",
+  { id: UserId },
+  { httpApiStatus: 404 },
 ) {}

@@ -2,7 +2,7 @@ import { Database } from "#src/_shared/database/database.service.ts";
 import { PostRepository, type NewPost } from "#src/posts/application/ports/post.repository.ts";
 import { Post, PostId, type PostPatch } from "#src/posts/domain/post.entity.ts";
 import { postsTable, type PostRow } from "#src/posts/infrastructure/posts.table.ts";
-import { UserId } from "#src/users/domain/user.entity.ts";
+import { UserId } from "#src/auth/domain/auth.entity.ts";
 import { eq } from "drizzle-orm";
 import { DateTime, Effect, Layer, Option } from "effect";
 

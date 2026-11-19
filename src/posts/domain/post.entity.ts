@@ -1,4 +1,4 @@
-import { UserId } from "#src/users/domain/user.entity.ts";
+import { UserId } from "#src/auth/domain/auth.entity.ts";
 import { Schema } from "effect";
 
 export const PostId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand("PostId"));

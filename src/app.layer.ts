@@ -1,5 +1,6 @@
-import { AuthLive, AuthMiddlewareLive } from "#src/auth/auth.layer.ts";
+import { AuthMiddlewareLive } from "#src/auth/auth.layer.ts";
 import { PostsLive } from "#src/posts/posts.layer.ts";
+import { UsersLive } from "#src/users/users.layer.ts";
 import { AppConfig } from "#src/_shared/config/app.config.ts";
 import { DatabaseLive } from "#src/_shared/database/database.layer.ts";
 import { Api } from "#src/_shared/http/api.ts";
@@ -10,7 +11,7 @@ import { HttpApiBuilder, HttpApiMiddleware, HttpApiScalar } from "effect/http-ap
 import { createServer } from "node:http";
 
 const ApiRoutes = HttpApiBuilder.layer(Api, { openapiPath: "/api/docs/openapi.json" }).pipe(
-  Layer.provide([AuthLive, PostsLive]),
+  Layer.provide([PostsLive, UsersLive]),
   Layer.provide([
     AuthMiddlewareLive,
     HttpApiMiddleware.layerProblemDetails({ includeDetails: true }),

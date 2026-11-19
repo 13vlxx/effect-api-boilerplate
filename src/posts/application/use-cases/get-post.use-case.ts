@@ -1,7 +1,7 @@
 import { PostRepository } from "#src/posts/application/ports/post.repository.ts";
 import type { PostId } from "#src/posts/domain/post.entity.ts";
 import { PostForbiddenError, PostNotFoundError } from "#src/posts/domain/post.errors.ts";
-import type { UserId } from "#src/users/domain/user.entity.ts";
+import type { UserId } from "#src/auth/domain/auth.entity.ts";
 import { Effect } from "effect";
 
 export const getPost = Effect.fn("getPost")(function* (id: PostId) {
