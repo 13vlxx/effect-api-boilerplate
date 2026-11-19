@@ -18,7 +18,7 @@ docker compose up -d --wait           # Postgres local (user/pass/db = app)
 ```
 
 Avant de considérer une tâche finie : `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test` doivent passer.
-Configuration : `.env` (voir `.env.example`) → `PORT` (défaut 3000) et `DATABASE_URL`.
+Configuration : `.env` (voir `.env.example`) → `PORT` (défaut 3000), `DATABASE_URL` et `JWT_SECRET`.
 
 ## Structure
 
@@ -44,7 +44,7 @@ src/
     <module>.test.ts            # tests des use cases avec adapters en mémoire
 ```
 
-Modules actuels : `posts` (CRUD, écriture réservée à l'auteur), `users` (utilisateurs, dépôt), `auth` (inscription, HTTP Basic, middleware `Authentication`, `CurrentUser`).
+Modules actuels : `posts` (CRUD, écriture réservée à l'auteur), `users` (utilisateurs, dépôt), `auth` (inscription, login JWT, middleware `Authentication`, `CurrentUser`).
 
 ## Règle de dépendance (hexagonale)
 
@@ -196,9 +196,11 @@ Pourquoi `Effect.context` + `provideContext` : les handlers HttpApi ne peuvent p
 
 ### Authentification
 
-- Schéma : HTTP Basic. `Authentication` (`HttpApiMiddleware.Service` avec `security: { basic: HttpApiSecurity.basic }`) fournit `CurrentUser` aux handlers.
-- `AuthenticationLive` (`authentication.handler.ts`) capture `UserRepository | PasswordHasher`, appelle le use case `authenticateUser(username, password)`, puis `Effect.provideService(httpEffect, CurrentUser, user)`.
-- Mots de passe : Argon2id via le port `PasswordHasher` (adapter `Argon2PasswordHasherLive`). `verify` prend un `Option` de hash et vérifie toujours contre un hash factice si l'utilisateur est inconnu (pas de fuite par timing).
+- Schéma : JWT Bearer (HS256, access token seul, 1 h). `POST /auth/login` (`loginUser` : `authenticateUser` puis `TokenService.issue`) renvoie `{ accessToken, tokenType, expiresIn }` (`POST /auth/register` aussi : l'inscription connecte directement) ; les routes protégées lisent `Authorization: Bearer <jwt>`.
+- `Authentication` (`HttpApiMiddleware.Service` avec `security: { bearer: HttpApiSecurity.bearer }`) fournit `CurrentUser` aux handlers. `AuthenticationLive` capture `UserRepository | TokenService` et appelle `authenticateToken` (vérifie le JWT puis recharge l'utilisateur : un token d'un utilisateur supprimé est refusé).
+- Port `TokenService` (`issue`, `verify`), adapter `JoseTokenServiceLive` (`jose`, algorithme figé à HS256). Secret : `JWT_SECRET` (`Redacted`, 32 caractères minimum, sinon le layer meurt au démarrage).
+- Pas de refresh token ni de révocation : à l'expiration, le client se reconnecte. Pour en ajouter, il faut une table de refresh tokens hachés et les routes `/auth/refresh` et `/auth/logout`.
+- Mots de passe : Argon2id via le port `PasswordHasher`. `verify` prend un `Option` de hash et vérifie toujours contre un hash factice si l'utilisateur est inconnu (pas de fuite par timing).
 - Pour protéger une nouvelle route : ajouter l'endpoint avant `.middleware(Authentication)` et lire `yield* CurrentUser` dans le handler. Passer `user.id` au use case.
 
 ### Layers (composition)
@@ -234,4 +236,4 @@ Exemple : un module `comments` rattaché aux posts.
 
 ## Production
 
-`Dockerfile` à la racine (Node 24, dépendances de prod, migrations puis démarrage, healthcheck sur `/api/docs/openapi.json`). Avant la mise en prod : passer `includeDetails` à `false` dans `layerProblemDetails` (`app.layer.ts`), protéger ou retirer `/api/docs`, et placer l'API derrière un reverse proxy HTTPS (HTTP Basic envoie les identifiants en clair).
+`Dockerfile` à la racine (Node 24, dépendances de prod, migrations puis démarrage, healthcheck sur `/api/docs/openapi.json`). Avant la mise en prod : passer `includeDetails` à `false` dans `layerProblemDetails` (`app.layer.ts`), protéger ou retirer `/api/docs`, et placer l'API derrière un reverse proxy HTTPS (le Bearer circule en clair sans TLS, et définir un `JWT_SECRET` fort et propre à l'environnement).

@@ -6,11 +6,12 @@ import { HttpApiMiddleware, HttpApiSecurity } from "effect/http-api";
 // L'utilisateur connecté, fourni par le middleware aux routes protégées.
 export class CurrentUser extends Context.Service<CurrentUser, User>()("auth/CurrentUser") {}
 
-// Le contrat du middleware : schéma de sécurité HTTP Basic, service fourni, erreur possible.
+// Le contrat du middleware : access token Bearer (JWT), service fourni, erreur possible.
 export class Authentication extends HttpApiMiddleware.Service<
   Authentication,
   { provides: CurrentUser; requires: never }
 >()("auth/Authentication", {
-  security: { basic: HttpApiSecurity.basic },
+  // `bearer` en minuscules : Scalar n'affiche le champ Token que pour ce libellé exact.
+  security: { bearer: { ...HttpApiSecurity.bearer, scheme: "bearer" } },
   error: UnauthorizedError,
 }) {}

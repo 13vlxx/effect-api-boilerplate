@@ -1,4 +1,5 @@
 import { PasswordHasher } from "#src/auth/application/ports/password.hasher.ts";
+import { TokenService } from "#src/auth/application/ports/token.service.ts";
 import { UserRepository } from "#src/users/application/ports/user.repository.ts";
 import type { Username } from "#src/users/domain/user.entity.ts";
 import { Effect, type Redacted } from "effect";
@@ -11,5 +12,7 @@ export const registerUser = Effect.fn("registerUser")(function* (
   const hasher = yield* PasswordHasher;
   const usersRepository = yield* UserRepository;
   const passwordHash = yield* hasher.hash(password);
-  return yield* usersRepository.create(username, passwordHash);
+  const user = yield* usersRepository.create(username, passwordHash);
+  const tokens = yield* TokenService;
+  return yield* tokens.issue(user.id);
 });

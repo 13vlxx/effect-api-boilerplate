@@ -1,4 +1,9 @@
 import { PasswordHasher } from "#src/auth/application/ports/password.hasher.ts";
+import { TokenService } from "#src/auth/application/ports/token.service.ts";
+import { authenticateToken } from "#src/auth/application/use-cases/authenticate-token.use-case.ts";
+import { loginUser } from "#src/auth/application/use-cases/login-user.use-case.ts";
+import { AccessToken } from "#src/auth/domain/auth.entity.ts";
+import { UnauthorizedError } from "#src/auth/domain/auth.errors.ts";
 import { authenticateUser } from "#src/auth/application/use-cases/authenticate-user.use-case.ts";
 import { registerUser } from "#src/auth/application/use-cases/register-user.use-case.ts";
 import { UserRepository } from "#src/users/application/ports/user.repository.ts";
@@ -46,7 +51,24 @@ const InMemoryUserRepository = Layer.effect(
   }),
 );
 
-const TestLayer = Layer.mergeAll(InMemoryUserRepository, FakePasswordHasher);
+// Faux token : "token:<userId>". On teste la logique des cas d'usage, pas la signature JWT.
+const FakeTokenService = Layer.succeed(
+  TokenService,
+  TokenService.of({
+    issue: (userId) =>
+      Effect.succeed(
+        new AccessToken({ accessToken: `token:${userId}`, tokenType: "Bearer", expiresIn: 3600 }),
+      ),
+    verify: (token) => {
+      const value = Redacted.value(token);
+      return value.startsWith("token:")
+        ? Effect.succeed(UserId.make(value.slice("token:".length)))
+        : Effect.fail(new UnauthorizedError({ message: "Invalid or expired token" }));
+    },
+  }),
+);
+
+const TestLayer = Layer.mergeAll(InMemoryUserRepository, FakePasswordHasher, FakeTokenService);
 
 const password = Redacted.make("correct horse battery");
 
@@ -54,8 +76,9 @@ describe("auth use cases", () => {
   it.effect("authenticates a registered user", () =>
     Effect.gen(function* () {
       const registered = yield* registerUser(Username.make("alice"), password);
+      const registeredUser = yield* authenticateToken(Redacted.make(registered.accessToken));
       const user = yield* authenticateUser("alice", password);
-      expect(user.id).toBe(registered.id);
+      expect(user.id).toBe(registeredUser.id);
     }).pipe(Effect.provide(TestLayer)),
   );
 
@@ -73,6 +96,28 @@ describe("auth use cases", () => {
       yield* registerUser(Username.make("alice"), password);
       const error = yield* Effect.flip(registerUser(Username.make("alice"), password));
       expect(error._tag).toBe("UsernameTakenError");
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
+  it.effect("logs in and resolves the user from the issued token", () =>
+    Effect.gen(function* () {
+      const registered = yield* registerUser(Username.make("alice"), password);
+      const { accessToken } = yield* loginUser("alice", password);
+      const user = yield* authenticateToken(Redacted.make(accessToken));
+      expect(accessToken).toBe(registered.accessToken);
+      expect(user.username).toBe("alice");
+    }).pipe(Effect.provide(TestLayer)),
+  );
+
+  it.effect("rejects a bad login, a bad token and a token of an unknown user", () =>
+    Effect.gen(function* () {
+      yield* registerUser(Username.make("alice"), password);
+      const login = yield* Effect.flip(loginUser("alice", Redacted.make("nope")));
+      const garbage = yield* Effect.flip(authenticateToken(Redacted.make("garbage")));
+      const ghost = yield* Effect.flip(
+        authenticateToken(Redacted.make(`token:${crypto.randomUUID()}`)),
+      );
+      expect([login._tag, garbage._tag, ghost._tag]).toEqual(Array(3).fill("UnauthorizedError"));
     }).pipe(Effect.provide(TestLayer)),
   );
 });
