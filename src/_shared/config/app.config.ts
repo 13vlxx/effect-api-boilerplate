@@ -1,4 +1,4 @@
-import { Config, Context, Effect, Layer, Redacted } from "effect";
+import { Config, Context, Effect, Layer, type Redacted } from "effect";
 
 export class AppConfig extends Context.Service<
   AppConfig,

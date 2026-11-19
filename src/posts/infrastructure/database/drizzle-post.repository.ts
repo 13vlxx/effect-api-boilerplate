@@ -1,13 +1,15 @@
 import { Database } from "#src/_shared/database/database.service.ts";
-import { PostRepository } from "#src/posts/application/ports/post.repository.ts";
-import { Post, PostId, type PostInput, type PostPatch } from "#src/posts/domain/post.entity.ts";
+import { PostRepository, type NewPost } from "#src/posts/application/ports/post.repository.ts";
+import { Post, PostId, type PostPatch } from "#src/posts/domain/post.entity.ts";
 import { postsTable, type PostRow } from "#src/posts/infrastructure/posts.table.ts";
+import { UserId } from "#src/users/domain/user.entity.ts";
 import { eq } from "drizzle-orm";
 import { DateTime, Effect, Layer, Option } from "effect";
 
 const toPost = (row: PostRow): Post =>
   new Post({
     id: PostId.make(row.id),
+    authorId: UserId.make(row.authorId),
     title: row.title,
     content: row.content,
     createdAt: DateTime.fromDateUnsafe(row.createdAt),
@@ -19,7 +21,7 @@ export const DrizzlePostRepositoryLive = Layer.effect(
   Effect.gen(function* () {
     const db = yield* Database;
 
-    const create = Effect.fn("PostRepository.create")(function* (data: PostInput) {
+    const create = Effect.fn("PostRepository.create")(function* (data: NewPost) {
       const rows = yield* db.insert(postsTable).values(data).returning().pipe(Effect.orDie);
       const row = rows[0];
 

@@ -1,3 +1,4 @@
+import { UserId } from "#src/users/domain/user.entity.ts";
 import { Schema } from "effect";
 
 export const PostId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand("PostId"));
@@ -28,6 +29,7 @@ export type PostPatch = typeof PostPatch.Type;
 
 export class Post extends Schema.Class<Post>("Post")({
   id: PostId,
+  authorId: UserId,
   title: PostTitle,
   content: PostContent,
   createdAt: Schema.DateTimeUtc,

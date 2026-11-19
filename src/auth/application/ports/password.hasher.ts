@@ -1,4 +1,4 @@
-import { Context, Effect, Option, Redacted } from "effect";
+import { Context, type Effect, type Option, type Redacted } from "effect";
 
 export class PasswordHasher extends Context.Service<
   PasswordHasher,

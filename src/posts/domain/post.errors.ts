@@ -6,3 +6,9 @@ export class PostNotFoundError extends Schema.TaggedError<PostNotFoundError>()(
   { id: PostId },
   { httpApiStatus: 404 },
 ) {}
+
+export class PostForbiddenError extends Schema.TaggedError<PostForbiddenError>()(
+  "PostForbiddenError",
+  { message: Schema.String },
+  { httpApiStatus: 403 },
+) {}
