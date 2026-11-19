@@ -1,0 +1,47 @@
+{
+  "name": "effect-api",
+  "version": "1.0.0",
+  "description": "",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "imports": {
+    "#src/*": "./src/*"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "prepare": "effect-tsgo patch --typescript --no-oxlint",
+    "dev": "node --env-file-if-exists=.env --watch src/main.ts",
+    "typecheck": "effect-tsgo tsc --noEmit",
+    "lint": "oxlint --import-plugin -D import/no-cycle -D unicorn/filename-case -D typescript/consistent-type-imports -D typescript/no-explicit-any -D no-console -D eqeqeq",
+    "format": "oxfmt src",
+    "format:check": "oxfmt --check src",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=.env src/migrate.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "^4.1.4",
+    "@effect/sql-pg": "^4.1.4",
+    "drizzle-orm": "1.0.0-rc.5",
+    "effect": "^4.1.4"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.70.0",
+    "@effect/vitest": "^4.1.4",
+    "@types/node": "^24.19.2",
+    "drizzle-kit": "1.0.0-rc.5",
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.94.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.21.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@12.21.0"
+}
