@@ -28,7 +28,7 @@
 
     "erasableSyntaxOnly": true,
     "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": true,
+    "rewriteRelativeImportExtensions": false,
     "noEmit": true,
     "plugins": [
       {
