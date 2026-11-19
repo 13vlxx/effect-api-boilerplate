@@ -1,0 +1,7 @@
+node_modules
+.env
+.git
+drizzle.config.ts
+Dockerfile
+.dockerignore
+docker-compose.yml
