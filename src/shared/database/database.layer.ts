@@ -1,7 +1,7 @@
 import { AppConfig } from "#src/shared/config/app.config.ts";
 import { Database } from "#src/shared/database/database.service.ts";
 import { PgClient } from "@effect/sql-pg";
-import { makeWithDefaults } from "drizzle-orm/effect-pglite";
+import { makeWithDefaults } from "drizzle-orm/effect-postgres";
 import { Effect, Layer } from "effect";
 
 const PgLive = Layer.unwrap(
